@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Coverage — GMV-weighted compliance prioritization</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#F4EFE6;--surface:#FCFAF4;--surface-2:#F8F4EB;
+    --ink:#1B1813;--ink-soft:#6A6258;--ink-faint:#A39A8C;
+    --line:#E2D9C9;--line-strong:#D3C8B4;
+    --emerald:#107A52;--emerald-deep:#0B5C3E;--emerald-soft:#E3EFE6;
+    --clay:#B05432;--clay-soft:#F2E5DC;--gold:#C99A3C;
+    --shadow:0 1px 2px rgba(27,24,19,.04),0 8px 30px -12px rgba(27,24,19,.18);
+    --fd:'Fraunces',Georgia,serif;--fb:'Hanken Grotesk',system-ui,sans-serif;--fm:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--fb);background:var(--bg);color:var(--ink);line-height:1.5;position:relative;min-height:100vh}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.4;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E")}
+  .wrap{position:relative;z-index:1;max-width:1120px;margin:0 auto;padding:0 28px}
+  header{padding:42px 0 26px;border-bottom:1px solid var(--line)}
+  .brandrow{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap}
+  .mark{display:flex;align-items:center;gap:13px}
+  .glyph{width:42px;height:42px;border-radius:11px;flex:none;background:linear-gradient(150deg,var(--emerald),var(--emerald-deep));display:grid;place-items:center;color:#fff;font-family:var(--fm);font-weight:600;font-size:19px;box-shadow:0 6px 16px -6px rgba(11,92,62,.6)}
+  .brand h1{font-family:var(--fd);font-weight:600;font-size:27px;letter-spacing:-.01em;line-height:1}
+  .brand .sub{font-size:13px;color:var(--ink-soft);margin-top:3px}
+  .synthtag{display:inline-flex;align-items:center;gap:7px;font-family:var(--fm);font-size:11px;color:var(--clay);background:var(--clay-soft);border:1px solid #E6D2C5;padding:7px 11px;border-radius:999px}
+  .synthtag .dot{width:6px;height:6px;border-radius:50%;background:var(--clay)}
+  .lede{margin-top:20px;max-width:660px;font-size:15.5px;color:var(--ink-soft)}
+  .lede b{color:var(--ink);font-weight:600}
+
+  .grid{display:grid;grid-template-columns:330px 1fr;gap:30px;padding:34px 0 60px;align-items:start}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}
+  .sticky{position:sticky;top:22px}
+  .panel-head{padding:18px 20px 14px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-family:var(--fm);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint)}
+  .panel-head h2{font-family:var(--fd);font-weight:500;font-size:19px;margin-top:5px}
+
+  .gauge{padding:14px 20px 6px;text-align:center}
+  .gauge svg{width:100%;max-width:280px;height:auto}
+  .gnum{font-family:var(--fm);font-weight:600;font-size:44px;letter-spacing:-.02em;line-height:1;margin-top:-58px}
+  .glabel{font-size:12px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.1em;margin-top:6px;margin-bottom:14px}
+  .gtarget{font-family:var(--fm);font-size:12px;color:var(--ink-soft);margin-bottom:6px}
+  .gtarget b{color:var(--emerald-deep)}
+
+  .stats{padding:6px 20px 18px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .stat{background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:12px 13px}
+  .stat .n{font-family:var(--fm);font-weight:600;font-size:18px;line-height:1.1}
+  .stat .l{font-size:11px;color:var(--ink-faint);margin-top:5px;line-height:1.35}
+  .controls{padding:16px 20px;border-top:1px solid var(--line);background:var(--surface-2);border-radius:0 0 16px 16px;display:flex;gap:10px}
+  .btn{flex:1;padding:12px;border:none;border-radius:11px;cursor:pointer;font-family:var(--fb);font-weight:600;font-size:13.5px;transition:transform .12s,background .2s,opacity .2s}
+  .btn.primary{background:var(--ink);color:#F4EFE6}
+  .btn.primary:hover{background:#000;transform:translateY(-1px)}
+  .btn.ghost{flex:none;background:transparent;border:1px solid var(--line-strong);color:var(--ink-soft)}
+  .btn.ghost:hover{border-color:var(--ink-soft)}
+  .btn:disabled{opacity:.45;cursor:default;transform:none}
+
+  .insight{margin:14px 20px 4px;padding:13px 15px;background:var(--emerald-soft);border:1px solid #CBE2D2;border-radius:11px;font-size:13px;color:var(--emerald-deep);line-height:1.45}
+  .insight b{font-weight:700}
+
+  .list-head{display:grid;grid-template-columns:30px 1fr 120px 132px;gap:12px;padding:13px 20px;font-family:var(--fm);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);border-bottom:1px solid var(--line)}
+  .row{display:grid;grid-template-columns:30px 1fr 120px 132px;gap:12px;align-items:center;padding:13px 20px;border-top:1px solid var(--line);transition:background .3s}
+  .row:first-of-type{border-top:none}
+  .row.justcovered{background:var(--emerald-soft)}
+  .rk{font-family:var(--fm);font-size:13px;color:var(--ink-faint)}
+  .bn{font-weight:600;font-size:14.5px}
+  .bn .tail{font-size:11.5px;color:var(--ink-faint);font-weight:500;margin-left:7px;font-family:var(--fm)}
+  .gmv{font-family:var(--fm);font-size:14px;text-align:right;color:var(--ink)}
+  .gmv .sh{display:block;font-size:10.5px;color:var(--ink-faint)}
+  .act{text-align:right}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--fm);font-size:11px;padding:5px 10px;border-radius:999px;font-weight:500}
+  .pill.covered{background:var(--emerald-soft);color:var(--emerald-deep)}
+  .pill.covered .d{width:6px;height:6px;border-radius:50%;background:var(--emerald)}
+  .fill{font-family:var(--fb);font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer;transition:all .15s}
+  .fill:hover{border-color:var(--emerald);color:var(--emerald-deep);background:var(--emerald-soft)}
+
+  details.how{margin:30px 0 0;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+  details.how summary{padding:16px 20px;cursor:pointer;font-weight:600;font-size:14px;list-style:none;display:flex;justify-content:space-between}
+  details.how summary::-webkit-details-marker{display:none}
+  details.how summary .arr{font-family:var(--fm);color:var(--ink-faint);transition:transform .2s}
+  details.how[open] summary .arr{transform:rotate(90deg)}
+  details.how .body{padding:0 20px 20px;font-size:14px;color:var(--ink-soft);max-width:780px}
+  details.how .body p{margin-top:10px}
+  details.how code{font-family:var(--fm);font-size:12.5px;background:var(--surface-2);padding:2px 6px;border-radius:5px;color:var(--ink)}
+  footer{border-top:1px solid var(--line);padding:24px 0 50px;color:var(--ink-faint);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  footer b{color:var(--ink-soft);font-weight:600}
+  footer .mono{font-family:var(--fm);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brandrow">
+      <div class="mark">
+        <div class="glyph">C</div>
+        <div class="brand">
+          <h1>Coverage</h1>
+          <div class="sub">GMV-weighted regulatory compliance prioritization (modeled on EU GPSR)</div>
+        </div>
+      </div>
+      <div class="synthtag"><span class="dot"></span> Synthetic data &middot; fictional brands</div>
+    </div>
+    <p class="lede">When a regulation requires data you don't yet hold for every brand, chasing them alphabetically is a trap. This tool ranks brands by the revenue they carry, so filling the <b>few</b> that matter clears most of the exposure fast. The target is to cover <b>80% of GMV</b>, not 80% of brands. Fill brands by hand, or run the pipeline and watch how few it takes.</p>
+  </header>
+
+  <div class="grid">
+    <aside class="panel sticky">
+      <div class="panel-head"><div class="eyebrow">Live coverage</div><h2>Share of GMV covered</h2></div>
+      <div class="gauge">
+        <svg viewBox="0 0 300 175">
+          <path d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke="#E2D9C9" stroke-width="16" stroke-linecap="round"/>
+          <path id="arc" d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke="#107A52" stroke-width="16" stroke-linecap="round" stroke-dasharray="377" stroke-dashoffset="377" style="transition:stroke-dashoffset .9s cubic-bezier(.2,.7,.3,1), stroke .4s"/>
+          <line id="tick" x1="0" y1="0" x2="0" y2="0" stroke="#0B5C3E" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+        <div class="gnum" id="gnum">0%</div>
+        <div class="gtarget">target <b>80%</b> of GMV</div>
+        <div class="glabel" id="glabel">below target</div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="n" id="sBrands">0 / 14</div><div class="l">Brands covered</div></div>
+        <div class="stat"><div class="n" id="sNeed">&mdash;</div><div class="l">Brands to hit 80%</div></div>
+        <div class="stat"><div class="n">3 hr &rarr; 5 min</div><div class="l">Manual research / week</div></div>
+        <div class="stat"><div class="n">~86%</div><div class="l">Automated hit rate</div></div>
+      </div>
+      <div class="controls">
+        <button class="btn primary" id="run">Run pipeline to 80%</button>
+        <button class="btn ghost" id="reset">Reset</button>
+      </div>
+    </aside>
+
+    <main class="panel">
+      <div class="panel-head"><div class="eyebrow">Brand register</div><h2>Ranked by trailing 6-month GMV</h2></div>
+      <div class="insight" id="insight">Covering the top brands by revenue reaches the 80% target with a fraction of the catalogue. The long tail can stay manual by design.</div>
+      <div class="list-head"><span>#</span><span>Brand</span><span style="text-align:right">6-mo GMV</span><span style="text-align:right">Status</span></div>
+      <div id="rows"></div>
+    </main>
+  </div>
+
+  <details class="how">
+    <summary>How the prioritization works <span class="arr">&rsaquo;</span></summary>
+    <div class="body">
+      <p>Every brand is ranked by its trailing six-month <code>GMV</code>, pulled from the data warehouse. Coverage is measured as the <b>share of total GMV</b> that has complete compliance data, not the share of brands.</p>
+      <p>Because revenue follows a long tail, a handful of brands carry most of the exposure. Filling them first moves the needle far faster than working through the catalogue in order, which is why a small, ranked effort clears the regulatory bar in weeks rather than months.</p>
+      <p>In production this register fed an automated research step that filled most brands, with the obscure long tail left to a human by design. The same ranking doubled as a prioritization shield: a request to enrich brands sitting far below the cut could be answered with data, not opinion.</p>
+    </div>
+  </details>
+
+  <footer>
+    <div>Built by <b>Riddhiman Roy</b> &middot; portfolio demo on fabricated data</div>
+    <div class="mono">vanilla JS &middot; no backend &middot; no real data</div>
+  </footer>
+</div>
+
+<script>
+  const BRANDS = [
+    {name:'Volta Living', cat:'Home', gmv:2400000, covered:false},
+    {name:'Brightwear', cat:'Apparel', gmv:1850000, covered:true},
+    {name:'Nordkraft Tools', cat:'DIY', gmv:1300000, covered:false},
+    {name:'Casa Verde', cat:'Garden', gmv:980000, covered:false},
+    {name:'Lumio Home', cat:'Lighting', gmv:720000, covered:false},
+    {name:'Pulse Audio', cat:'Electronics', gmv:410000, covered:false},
+    {name:'Trailhead Gear', cat:'Outdoor', gmv:360000, covered:true},
+    {name:'Maison Cle', cat:'Decor', gmv:300000, covered:false},
+    {name:'Ferro Kitchen', cat:'Kitchen', gmv:250000, covered:false},
+    {name:'Driftwood Co', cat:'Furniture', gmv:210000, covered:false},
+    {name:'Nimbus Sport', cat:'Sport', gmv:170000, covered:false},
+    {name:'Petal & Stem', cat:'Florals', gmv:140000, covered:false},
+    {name:'Orbit Toys', cat:'Toys', gmv:110000, covered:false},
+    {name:'Kestrel Outdoor', cat:'Outdoor', gmv:90000, covered:false},
+  ];
+  const TOTAL = BRANDS.reduce((s,b)=>s+b.gmv,0);
+  const TARGET = 0.80;
+  const ARC = 377;
+  let running = false;
+
+  const fmt = n => '\u20AC' + (n/1000000).toFixed(2) + 'M';
+  const covGMV = () => BRANDS.filter(b=>b.covered).reduce((s,b)=>s+b.gmv,0);
+
+  function brandsToTarget(){
+    // how many more (in gmv order) to reach target from current state
+    let cur = covGMV();
+    const missing = BRANDS.filter(b=>!b.covered).sort((a,b)=>b.gmv-a.gmv);
+    let n=0;
+    for(const b of missing){ if(cur/TOTAL>=TARGET) break; cur+=b.gmv; n++; }
+    return cur/TOTAL>=TARGET ? n : '\u2014';
+  }
+
+  function tickPos(){
+    const f=TARGET, ang=(180-f*180)*Math.PI/180;
+    const cx=150, cy=150, r=120;
+    const x=cx+r*Math.cos(ang), y=cy-r*Math.sin(ang);
+    const x2=cx+(r-13)*Math.cos(ang), y2=cy-(r-13)*Math.sin(ang);
+    return {x1:x,y1:y,x2:x2,y2:y2};
+  }
+
+  function render(justName){
+    const cov = covGMV()/TOTAL;
+    const arc = document.getElementById('arc');
+    arc.style.strokeDashoffset = ARC*(1-cov);
+    arc.style.stroke = cov>=TARGET ? '#107A52' : (cov>=0.5 ? '#C99A3C' : '#B05432');
+    countUp(document.getElementById('gnum'), Math.round(cov*100));
+    document.getElementById('gnum').style.color = cov>=TARGET ? '#0B5C3E' : 'var(--ink)';
+    const gl=document.getElementById('glabel');
+    gl.textContent = cov>=TARGET ? 'target reached' : 'below target';
+    gl.style.color = cov>=TARGET ? '#0B5C3E' : 'var(--ink-faint)';
+
+    const t=tickPos();
+    const tk=document.getElementById('tick');
+    tk.setAttribute('x1',t.x1);tk.setAttribute('y1',t.y1);tk.setAttribute('x2',t.x2);tk.setAttribute('y2',t.y2);
+
+    document.getElementById('sBrands').textContent = BRANDS.filter(b=>b.covered).length + ' / ' + BRANDS.length;
+    document.getElementById('sNeed').textContent = brandsToTarget();
+
+    const ranked=[...BRANDS].sort((a,b)=>b.gmv-a.gmv);
+    document.getElementById('rows').innerHTML = ranked.map((b,i)=>{
+      const sh=(b.gmv/TOTAL*100).toFixed(1);
+      const status = b.covered
+        ? `<span class="pill covered"><span class="d"></span>covered</span>`
+        : `<button class="fill" data-n="${b.name}">Research &amp; fill</button>`;
+      return `<div class="row ${b.name===justName?'justcovered':''}">
+        <span class="rk">${String(i+1).padStart(2,'0')}</span>
+        <span class="bn">${b.name}<span class="tail">${b.cat}</span></span>
+        <span class="gmv">${fmt(b.gmv)}<span class="sh">${sh}% of GMV</span></span>
+        <span class="act">${status}</span>
+      </div>`;
+    }).join('');
+
+    document.querySelectorAll('.fill').forEach(btn=>{
+      btn.addEventListener('click',()=>{ if(running) return; const b=BRANDS.find(x=>x.name===btn.dataset.n); b.covered=true; render(b.name); });
+    });
+  }
+
+  function countUp(el,target){
+    const cur=parseInt(el.textContent)||0, dur=600, start=performance.now();
+    function step(now){const p=Math.min(1,(now-start)/dur);el.textContent=Math.round(cur+(target-cur)*(1-Math.pow(1-p,3)))+'%';if(p<1)requestAnimationFrame(step);}
+    requestAnimationFrame(step);
+  }
+
+  document.getElementById('run').addEventListener('click', async ()=>{
+    if(running) return; running=true;
+    const btn=document.getElementById('run'); btn.disabled=true; btn.textContent='Running\u2026';
+    const missing=BRANDS.filter(b=>!b.covered).sort((a,b)=>b.gmv-a.gmv);
+    for(const b of missing){
+      if(covGMV()/TOTAL>=TARGET) break;
+      b.covered=true; render(b.name);
+      await new Promise(r=>setTimeout(r,700));
+    }
+    running=false; btn.disabled=false; btn.textContent='Run pipeline to 80%';
+  });
+
+  document.getElementById('reset').addEventListener('click', ()=>{
+    if(running) return;
+    BRANDS.forEach((b,i)=>b.covered = (i===1||i===6));
+    render();
+  });
+
+  render();
+</script>
+</body>
+</html>

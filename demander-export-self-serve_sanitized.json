@@ -1,0 +1,152 @@
+{
+  "_README": [
+    "SANITIZED ILLUSTRATION — NOT A DROP-IN IMPORT.",
+    "This is a genericized version of a production n8n workflow, published as a portfolio code sample.",
+    "All credentials, internal hostnames, schema names, table/column names, and client identifiers",
+    "have been removed or replaced with neutral placeholders. The control flow and SQL/JS logic are",
+    "faithful to the original pattern; the names are not. Do not expect it to run as-is.",
+    "Pattern: an internal self-serve form lets a non-technical user pick from the CANONICAL",
+    "taxonomy values, which constrains the query at the input layer (no free-text category",
+    "mismatch). The result set is converted to CSV and returned. Original turnaround dropped",
+    "from ~3 days (ticket queue) to under 20 minutes."
+  ],
+  "name": "demander-export-self-serve (sanitized)",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Generate a demander export",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "category_level_1",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "<populated from canonical taxonomy>"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "category_level_2",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "<populated from canonical taxonomy>"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "row_limit",
+              "fieldType": "number",
+              "requiredField": false
+            }
+          ]
+        }
+      },
+      "name": "Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [
+        -260,
+        0
+      ],
+      "webhookId": "<redacted>"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Constrained by the canonical taxonomy values chosen in the form,\n-- so a non-technical user cannot submit a category that doesn't exist.\nSELECT p.brand, p.product_name, p.colour, p.match_key, p.rrp,\n       p.category_level_1, p.category_level_2, p.category_level_3\nFROM products p\nWHERE p.category_level_1 = $1\n  AND p.category_level_2 = $2\nORDER BY p.brand, p.product_name\nLIMIT COALESCE($3, 5000);",
+        "options": {
+          "queryReplacement": "={{ $json.category_level_1 }},{{ $json.category_level_2 }},{{ $json.row_limit }}"
+        }
+      },
+      "name": "Query products by taxonomy",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -40,
+        0
+      ],
+      "notes": "credentials intentionally omitted in this sanitized sample"
+    },
+    {
+      "parameters": {
+        "options": {
+          "headerRow": true,
+          "delimiter": ","
+        }
+      },
+      "name": "Convert to CSV",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        180,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ 'export_' + $now.format('yyyyLLdd_HHmm') + '.csv' }}",
+        "driveId": {
+          "value": "<redacted>"
+        },
+        "folderId": {
+          "value": "<redacted>"
+        }
+      },
+      "name": "Deliver file to user",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        400,
+        0
+      ],
+      "notes": "credentials intentionally omitted in this sanitized sample"
+    }
+  ],
+  "connections": {
+    "Form Trigger": {
+      "main": [
+        [
+          {
+            "node": "Query products by taxonomy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query products by taxonomy": {
+      "main": [
+        [
+          {
+            "node": "Convert to CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to CSV": {
+      "main": [
+        [
+          {
+            "node": "Deliver file to user",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

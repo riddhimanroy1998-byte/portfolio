@@ -1,0 +1,171 @@
+{
+  "_README": [
+    "SANITIZED ILLUSTRATION — NOT A DROP-IN IMPORT.",
+    "This is a genericized version of a production n8n workflow, published as a portfolio code sample.",
+    "All credentials, internal hostnames, schema names, table/column names, and client identifiers",
+    "have been removed or replaced with neutral placeholders. The control flow and SQL/JS logic are",
+    "faithful to the original pattern; the names are not. Do not expect it to run as-is.",
+    "Pattern: the core catalogue-insertion job. Runs four idempotent SQL steps in sequence on a",
+    "schedule: clean brand text -> dedupe staging & upsert products (validated against a",
+    "self-referencing taxonomy table) -> promote EAN rows to variants with size normalisation ->",
+    "queue manufacturer-part-number items for variant discovery -> clean up backlog/staging.",
+    "Every step uses ON CONFLICT so re-running is always safe."
+  ],
+  "name": "catalogue-creation-automatic-addition (sanitized)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 12
+            }
+          ]
+        }
+      },
+      "name": "Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Pre-step: strip quoting/escape characters from brand so match keys stay clean.\nUPDATE staging_products\nSET brand = REGEXP_REPLACE(REGEXP_REPLACE(brand, $$['\"]$$, '-', 'g'), $$[;\\\\%]$$, '', 'g')\nWHERE brand ~ $$['\";\\\\%]$$;",
+        "options": {}
+      },
+      "name": "Pre: clean brand text",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -140,
+        0
+      ],
+      "notes": "credentials intentionally omitted in this sanitized sample"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Step 1: dedupe staging, upsert into products (validated against the taxonomy),\n--         and seed descriptions. Idempotent via ON CONFLICT.\nBEGIN;\n\nWITH ranked AS (\n    SELECT ctid, ROW_NUMBER() OVER (PARTITION BY brand, match_key ORDER BY ctid) AS rn\n    FROM staging_products\n)\nDELETE FROM staging_products\nWHERE ctid IN (SELECT ctid FROM ranked WHERE rn > 1);\n\nINSERT INTO products (\n    category_level_1, category_level_2, category_level_3, use_case,\n    brand, match_key, product_name, colour, rrp, updated_at, attributes, model_name\n)\nSELECT\n    sp.category_level_1, c2.name AS category_level_2, sp.category_level_3, sp.use_case,\n    sp.brand, sp.match_key,\n    REPLACE(sp.product_name, sp.brand || ' ', '') AS product_name,  -- strip leading brand\n    LOWER(sp.colour), sp.rrp, NOW(), sp.attributes, sp.model_name\nFROM staging_products sp\nINNER JOIN category_reference c1\n    ON c1.name = sp.category_level_1 AND c1.category_level = 'category_level_1'\nLEFT JOIN category_reference c2\n    ON c2.name = sp.category_level_2 AND c2.category_level = 'category_level_2'\n    AND c1.id = c2.parent_category_id   -- self-referencing taxonomy hierarchy\nWHERE sp.description IS NOT NULL AND sp.description <> '' AND c2.name IS NOT NULL\nON CONFLICT (brand, match_key) DO UPDATE SET\n    category_level_1 = EXCLUDED.category_level_1,\n    category_level_2 = EXCLUDED.category_level_2,\n    category_level_3 = EXCLUDED.category_level_3,\n    use_case         = EXCLUDED.use_case,\n    product_name     = EXCLUDED.product_name,\n    colour           = EXCLUDED.colour,\n    rrp              = EXCLUDED.rrp,\n    attributes       = products.attributes || EXCLUDED.attributes;  -- merge JSON attrs\n\nINSERT INTO product_descriptions (product_id, description_text)\nSELECT p.id, sp.description\nFROM staging_products sp\nINNER JOIN products p ON sp.match_key = p.match_key AND p.brand = sp.brand\nWHERE NOT EXISTS (SELECT 1 FROM product_descriptions d WHERE d.product_id = p.id)\nON CONFLICT DO NOTHING;\n\nCOMMIT;",
+        "options": {}
+      },
+      "name": "Step 1: dedupe + upsert products",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        80,
+        0
+      ],
+      "notes": "credentials intentionally omitted in this sanitized sample"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Step 2: promote EAN-keyed rows into variants, normalise size strings, refresh counts.\nBEGIN;\n\nWITH valid_ean AS (\n    SELECT brand, match_key, (match_key ~ '^\\d{13}$') AS is_valid_ean\n    FROM staging_products\n    WHERE is_match_key_mpn = FALSE\n)\nINSERT INTO staging_variants (brand, match_key, ean, created_at)\nSELECT brand, match_key, match_key AS ean, NOW()\nFROM valid_ean\nWHERE is_valid_ean\n  AND EXISTS (SELECT 1 FROM products p WHERE p.match_key = valid_ean.match_key)\n  AND NOT EXISTS (SELECT 1 FROM staging_variants sv WHERE sv.ean = valid_ean.match_key)\nON CONFLICT DO NOTHING;\n\nWITH size_normalised AS (\n    SELECT brand, match_key, ean,\n        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(\n            size,'.00',''),'.50',' 1/2'),'.5',' 1/2'),'.33',' 1/3'),'.3',' 1/3'),'.67',' 2/3'),'.6',' 2/3') AS final_size\n    FROM staging_variants\n)\nINSERT INTO variants (product_id, ean, size)\nSELECT p.id, sn.ean, sn.final_size\nFROM products p\nINNER JOIN size_normalised sn ON p.brand = sn.brand AND p.match_key = sn.match_key\nON CONFLICT (ean) DO NOTHING;\n\nUPDATE products p\nSET variant_count = sq.variant_count\nFROM (\n    SELECT product_id, COUNT(*) AS variant_count\n    FROM variants\n    WHERE created_at >= CURRENT_DATE - INTERVAL '1 week'\n    GROUP BY product_id\n) sq\nWHERE p.id = sq.product_id;\n\nTRUNCATE staging_variants;\nCOMMIT;",
+        "options": {}
+      },
+      "name": "Step 2: variants + size normalise",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        300,
+        0
+      ],
+      "notes": "credentials intentionally omitted in this sanitized sample"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Step 3: items that arrived as a manufacturer part number have no variants yet.\n--         Queue them for downstream variant/EAN discovery.\nINSERT INTO enrichment_backlog (product_id, is_match_key_mpn, priority, process, created_at)\nSELECT p.id, TRUE, 100, 'investigate_mpn', NOW()\nFROM products p\nLEFT JOIN variants v ON p.id = v.product_id\nWHERE DATE(p.created_at) = CURRENT_DATE\n  AND v.id IS NULL\n  AND category_level_2 IN ('clothing','footwear','sports-shoes','sports-clothing')\nON CONFLICT DO NOTHING;",
+        "options": {}
+      },
+      "name": "Step 3: queue MPN discovery",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        520,
+        0
+      ],
+      "notes": "credentials intentionally omitted in this sanitized sample"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Step 4: clean up the ingestion backlog and staging once rows are promoted.\nBEGIN;\nDELETE FROM ingestion_backlog b\nWHERE EXISTS (SELECT 1 FROM products p WHERE p.match_key = b.match_key);\n\nDELETE FROM staging_products sp\nWHERE EXISTS (SELECT 1 FROM products p WHERE p.brand = sp.brand AND p.match_key = sp.match_key);\nCOMMIT;",
+        "options": {}
+      },
+      "name": "Step 4: cleanup",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        740,
+        0
+      ],
+      "notes": "credentials intentionally omitted in this sanitized sample"
+    }
+  ],
+  "connections": {
+    "Schedule": {
+      "main": [
+        [
+          {
+            "node": "Pre: clean brand text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pre: clean brand text": {
+      "main": [
+        [
+          {
+            "node": "Step 1: dedupe + upsert products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 1: dedupe + upsert products": {
+      "main": [
+        [
+          {
+            "node": "Step 2: variants + size normalise",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 2: variants + size normalise": {
+      "main": [
+        [
+          {
+            "node": "Step 3: queue MPN discovery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 3: queue MPN discovery": {
+      "main": [
+        [
+          {
+            "node": "Step 4: cleanup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

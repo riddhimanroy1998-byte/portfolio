@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HR Automations — process & architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#F4EFE6;--surface:#FCFAF4;--surface-2:#F8F4EB;
+    --ink:#1B1813;--ink-soft:#6A6258;--ink-faint:#A39A8C;
+    --line:#E2D9C9;--line-strong:#D3C8B4;
+    --emerald:#107A52;--emerald-deep:#0B5C3E;--emerald-soft:#E3EFE6;
+    --clay:#B05432;--clay-soft:#F2E5DC;--gold:#C99A3C;
+    --shadow:0 1px 2px rgba(27,24,19,.04),0 8px 30px -12px rgba(27,24,19,.18);
+    --fd:'Fraunces',Georgia,serif;--fb:'Hanken Grotesk',system-ui,sans-serif;--fm:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--fb);background:var(--bg);color:var(--ink);line-height:1.55;position:relative;min-height:100vh}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.4;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E")}
+  .wrap{position:relative;z-index:1;max-width:900px;margin:0 auto;padding:0 28px}
+  header{padding:46px 0 30px;border-bottom:1px solid var(--line)}
+  .mark{display:flex;align-items:center;gap:13px}
+  .glyph{width:42px;height:42px;border-radius:11px;flex:none;background:linear-gradient(150deg,var(--emerald),var(--emerald-deep));display:grid;place-items:center;color:#fff;font-family:var(--fm);font-weight:600;font-size:18px;box-shadow:0 6px 16px -6px rgba(11,92,62,.6)}
+  .brand h1{font-family:var(--fd);font-weight:600;font-size:28px;letter-spacing:-.01em;line-height:1}
+  .brand .sub{font-size:13px;color:var(--ink-soft);margin-top:3px}
+  .synthtag{display:inline-flex;align-items:center;gap:7px;font-family:var(--fm);font-size:11px;color:var(--clay);background:var(--clay-soft);border:1px solid #E6D2C5;padding:7px 11px;border-radius:999px;margin-top:18px}
+  .synthtag .dot{width:6px;height:6px;border-radius:50%;background:var(--clay)}
+  .intro{margin-top:16px;max-width:680px;font-size:15.5px;color:var(--ink-soft)}
+  .intro b{color:var(--ink);font-weight:600}
+
+  .case{margin:40px 0 0;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+  .case-head{padding:24px 28px 4px}
+  .kicker{font-family:var(--fm);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--emerald-deep)}
+  .case-head h2{font-family:var(--fd);font-weight:600;font-size:23px;margin-top:7px;letter-spacing:-.01em}
+  .case-head .tag{font-size:14px;color:var(--ink-soft);margin-top:6px}
+
+  .metrics{display:flex;flex-wrap:wrap;gap:10px;padding:18px 28px 4px}
+  .metric{background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:11px 15px;flex:1;min-width:140px}
+  .metric .n{font-family:var(--fm);font-weight:600;font-size:17px;color:var(--emerald-deep);line-height:1.1}
+  .metric .l{font-size:11.5px;color:var(--ink-faint);margin-top:4px}
+
+  .body{padding:18px 28px 6px;display:grid;gap:14px}
+  .block .h{font-family:var(--fm);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:5px}
+  .block p{font-size:14.5px;color:var(--ink)}
+  .block p .soft{color:var(--ink-soft)}
+  code{font-family:var(--fm);font-size:12.5px;background:var(--surface-2);padding:2px 6px;border-radius:5px;color:var(--ink)}
+
+  .diagram{padding:8px 20px 26px}
+  .diagram svg{width:100%;height:auto;display:block}
+  .dt{font-family:var(--fb);font-size:14.5px;font-weight:600;fill:var(--ink)}
+  .ds{font-family:var(--fb);font-size:12px;fill:var(--ink-soft)}
+  .dm{font-family:var(--fm);font-size:11px;fill:var(--ink-faint)}
+
+  footer{border-top:1px solid var(--line);margin-top:46px;padding:24px 0 50px;color:var(--ink-faint);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  footer b{color:var(--ink-soft);font-weight:600}
+  footer .mono{font-family:var(--fm);font-size:12px}
+  @media(max-width:560px){.metrics{gap:8px}.metric{min-width:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark">
+      <div class="glyph">HR</div>
+      <div class="brand">
+        <h1>HR automations</h1>
+        <div class="sub">Internal people-operations tooling &middot; process & architecture</div>
+      </div>
+    </div>
+    <p class="intro">Two automations I built for the People team at a European B2B e-commerce marketplace, taking recurring monthly admin off three people entirely. Architecture is shown at the pattern level; <b>no internal systems, data, or the payroll provider are named.</b></p>
+    <div class="synthtag"><span class="dot"></span> Anonymized employer &middot; pattern-level architecture</div>
+  </header>
+
+  <!-- CASE 1: LEAVE & PAYROLL -->
+  <section class="case">
+    <div class="case-head">
+      <div class="kicker">Workflow 01</div>
+      <h2>Leave &amp; payroll preparation</h2>
+      <div class="tag">Approval-triggered leave tracking that feeds payroll in one click.</div>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="n">80</div><div class="l">Employees covered</div></div>
+      <div class="metric"><div class="n">Month-end manual reconciliation removed</div><div class="l">Per pay cycle</div></div>
+      <div class="metric"><div class="n">1 click</div><div class="l">To generate payroll CSV</div></div>
+    </div>
+    <div class="body">
+      <div class="block">
+        <div class="h">The problem</div>
+        <p>Every leave request was logged by hand, and at month end the People team recalculated, per person, how many days each employee had taken, how many they were entitled to, and what paid balance remained. With <span class="soft">80 employees and several leave types, that was slow and error-prone exactly when payroll could not afford mistakes.</span></p>
+      </div>
+      <div class="block">
+        <div class="h">What I built</div>
+        <p>An approval-triggered system: a request submitted through a <code>Notion</code> form routes to the team lead, and on approval an <code>n8n</code> workflow logs it and updates a live per-person balance across paid, unpaid, paternity, and maternity leave. At month end, one action compiles every person's balances into a single <code>CSV</code> formatted for the payroll provider. Nobody checks the ledger by hand anymore.</p>
+      </div>
+    </div>
+    <div class="diagram">
+      <svg viewBox="0 0 840 250" role="img" aria-label="Leave and payroll flow">
+        <defs><marker id="a1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#A39A8C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+        <rect x="14" y="40" width="150" height="62" rx="11" fill="#F8F4EB" stroke="#D3C8B4" stroke-width="1"/>
+        <text class="dt" x="89" y="66" text-anchor="middle">Notion form</text>
+        <text class="ds" x="89" y="86" text-anchor="middle">Employee requests leave</text>
+        <line x1="164" y1="71" x2="196" y2="71" stroke="#A39A8C" stroke-width="1.5" marker-end="url(#a1)"/>
+        <rect x="198" y="40" width="150" height="62" rx="11" fill="#FAEEDA" stroke="#C99A3C" stroke-width="1"/>
+        <text class="dt" x="273" y="66" text-anchor="middle">Team-lead approval</text>
+        <text class="ds" x="273" y="86" text-anchor="middle">Gate before logging</text>
+        <line x1="348" y1="71" x2="380" y2="71" stroke="#A39A8C" stroke-width="1.5" marker-end="url(#a1)"/>
+        <rect x="382" y="40" width="160" height="62" rx="11" fill="#E6F1FB" stroke="#378ADD" stroke-width="1"/>
+        <text class="dt" x="462" y="66" text-anchor="middle">n8n logs &amp; updates</text>
+        <text class="ds" x="462" y="86" text-anchor="middle">Live per-person balance</text>
+        <line x1="542" y1="71" x2="574" y2="71" stroke="#A39A8C" stroke-width="1.5" marker-end="url(#a1)"/>
+        <rect x="576" y="40" width="150" height="62" rx="11" fill="#E6F1FB" stroke="#378ADD" stroke-width="1"/>
+        <text class="dt" x="651" y="58" text-anchor="middle">Balance ledger</text>
+        <text class="ds" x="651" y="76" text-anchor="middle">Paid, unpaid,</text>
+        <text class="ds" x="651" y="92" text-anchor="middle">paternity, maternity</text>
+        <line x1="651" y1="102" x2="651" y2="150" stroke="#A39A8C" stroke-width="1.5" marker-end="url(#a1)"/>
+        <rect x="500" y="152" width="300" height="62" rx="11" fill="#E3EFE6" stroke="#107A52" stroke-width="1"/>
+        <text class="dt" x="650" y="178" text-anchor="middle">One-click month-end export</text>
+        <text class="ds" x="650" y="198" text-anchor="middle">CSV formatted for payroll provider</text>
+        <text class="dm" x="40" y="180">monthly</text>
+        <text class="dm" x="40" y="196">trigger</text>
+        <line x1="100" y1="183" x2="498" y2="183" stroke="#A39A8C" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#a1)"/>
+      </svg>
+    </div>
+  </section>
+
+  <!-- CASE 2: NAVIGO -->
+  <section class="case">
+    <div class="case-head">
+      <div class="kicker">Workflow 02</div>
+      <h2>Transit-pass reimbursement</h2>
+      <div class="tag">Form-driven statutory reimbursement, with per-profile rules handled automatically.</div>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="n">Half a day &rarr; 0</div><div class="l">HR time per month</div></div>
+      <div class="metric"><div class="n">50%</div><div class="l">Statutory reimbursement</div></div>
+      <div class="metric"><div class="n">Per-profile</div><div class="l">Student, intern, standard</div></div>
+    </div>
+    <div class="body">
+      <div class="block">
+        <div class="h">The problem</div>
+        <p>French employers reimburse 50% of an employee's public-transit (Navigo) pass. Each month the three-person team blocked half a day to open every employee's pass, read it, and compute the payout by hand. <span class="soft">It was not one-size-fits-all: students, interns, and standard employees carry different subscription types and rules.</span></p>
+      </div>
+      <div class="block">
+        <div class="h">What I built</div>
+        <p>A form where each employee submits their pass details once. An <code>n8n</code> workflow reads the submission, applies the correct rule for that employee's profile, computes the 50% reimbursement, and registers it for the pay run. The recurring half-day of manual checking dropped to zero.</p>
+      </div>
+    </div>
+    <div class="diagram">
+      <svg viewBox="0 0 840 200" role="img" aria-label="Navigo reimbursement flow">
+        <defs><marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#A39A8C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+        <rect x="14" y="40" width="160" height="62" rx="11" fill="#F8F4EB" stroke="#D3C8B4" stroke-width="1"/>
+        <text class="dt" x="94" y="66" text-anchor="middle">Submission form</text>
+        <text class="ds" x="94" y="86" text-anchor="middle">Employee enters pass once</text>
+        <line x1="174" y1="71" x2="206" y2="71" stroke="#A39A8C" stroke-width="1.5" marker-end="url(#a2)"/>
+        <rect x="208" y="40" width="170" height="62" rx="11" fill="#E6F1FB" stroke="#378ADD" stroke-width="1"/>
+        <text class="dt" x="293" y="58" text-anchor="middle">n8n reads &amp; classifies</text>
+        <text class="ds" x="293" y="76" text-anchor="middle">Detects profile type</text>
+        <text class="ds" x="293" y="92" text-anchor="middle">student / intern / standard</text>
+        <line x1="378" y1="71" x2="410" y2="71" stroke="#A39A8C" stroke-width="1.5" marker-end="url(#a2)"/>
+        <rect x="412" y="40" width="170" height="62" rx="11" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+        <text class="dt" x="497" y="58" text-anchor="middle">Applies rule</text>
+        <text class="ds" x="497" y="76" text-anchor="middle">Computes 50% payout</text>
+        <text class="ds" x="497" y="92" text-anchor="middle">for that profile</text>
+        <line x1="582" y1="71" x2="614" y2="71" stroke="#A39A8C" stroke-width="1.5" marker-end="url(#a2)"/>
+        <rect x="616" y="40" width="200" height="62" rx="11" fill="#E3EFE6" stroke="#107A52" stroke-width="1"/>
+        <text class="dt" x="716" y="66" text-anchor="middle">Registered for pay run</text>
+        <text class="ds" x="716" y="86" text-anchor="middle">No manual checking</text>
+        <text class="dm" x="14" y="150">Before: 3 people &times; half a day, every month &middot; After: zero touch</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- CASE 3: CV SCREENER (pointer) -->
+  <section class="case">
+    <div class="case-head">
+      <div class="kicker">Workflow 03</div>
+      <h2>CV screening &amp; shortlisting</h2>
+      <div class="tag">Keyword-matched, confidence-gated candidate ranking. Built in n8n with the OpenAI API.</div>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="n">10/hr &rarr; 100s/day</div><div class="l">Screening throughput</div></div>
+      <div class="metric"><div class="n">90%</div><div class="l">Confidence gate</div></div>
+      <div class="metric"><div class="n">Live demo</div><div class="l">Interactive, on synthetic data</div></div>
+    </div>
+    <div class="body">
+      <div class="block">
+        <div class="h">In one line</div>
+        <p>For each open role it extracts the requirements, scores every applicant against them with a structured <code>OpenAI API</code> prompt returning a JSON match score, gates at 90%, and surfaces a ranked shortlist so the team selects rather than reads everything. High-confidence matches auto-surface; borderline cases route to a human. <span class="soft">This one has its own interactive demo and write-up in the repo.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>Built by <b>Riddhiman Roy</b> &middot; anonymized, pattern-level architecture</div>
+    <div class="mono">portfolio &middot; no real data &middot; no employer named</div>
+  </footer>
+</div>
+</body>
+</html>

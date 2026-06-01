@@ -1,0 +1,209 @@
+{
+  "_README": [
+    "SANITIZED ILLUSTRATION — NOT A DROP-IN IMPORT.",
+    "This is a genericized version of a production n8n workflow, published as a portfolio code sample.",
+    "All credentials, internal hostnames, schema names, table/column names, and client identifiers",
+    "have been removed or replaced with neutral placeholders. The control flow and SQL/JS logic are",
+    "faithful to the original pattern; the names are not. Do not expect it to run as-is.",
+    "Pattern: scheduled job that, per demander, pulls already-LLM-generated variant rows,",
+    "skips anything previously published, flattens the generated attributes into the demander's",
+    "expected column names, writes a CSV, drops it to storage, and logs what was exported so the",
+    "next run is incremental and safe to re-run. The production workflow fans this same branch out",
+    "across many demanders; only one generic branch is shown here."
+  ],
+  "name": "demand-generation-demander-csv (sanitized)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "name": "Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "demander_id",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "a2",
+              "name": "demander",
+              "value": "DEMANDER_A",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "name": "Set demander params",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Pull LLM-generated variant rows for ONE demander that have not been published yet.\nWITH pending_products AS (\n    SELECT DISTINCT vo.product_id\n    FROM generation.generated_variants vo\n    LEFT JOIN published_product_pages pub\n        ON pub.demander_id = vo.demander_id AND pub.product_id = vo.product_id\n    WHERE vo.demander_id = $1\n      AND pub.product_id IS NULL   -- skip anything already pushed\n    ORDER BY vo.product_id ASC\n    LIMIT 20000\n)\nSELECT DISTINCT ON (vo.variant_id) vo.generated_fields\nFROM generation.generated_variants vo\nINNER JOIN demander_product_queue q ON q.product_id = vo.product_id\nWHERE vo.demander_id = $1\n  AND vo.product_id IN (SELECT product_id FROM pending_products)\nORDER BY vo.variant_id ASC, vo.created_at ASC;",
+        "options": {
+          "queryReplacement": "={{ $json.demander_id }}"
+        }
+      },
+      "name": "Get rows ready to push",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        120,
+        -80
+      ],
+      "notes": "credentials intentionally omitted in this sanitized sample"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Each row stores its generated attributes under a 'generated.' key prefix.\n// Flatten to the column names the demander's back-office CSV expects.\nreturn items.map(item => {\n  const src = item.json.generated_fields || {};\n  const out = {};\n  for (const key in src) {\n    if (Object.prototype.hasOwnProperty.call(src, key)) {\n      out[key.replace('generated.', '')] = src[key];\n    }\n  }\n  return { json: out };\n});"
+      },
+      "name": "Flatten generated fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "headerRow": true,
+          "delimiter": ","
+        }
+      },
+      "name": "Convert to CSV",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        560,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ $('Set demander params').item.json.demander + '_' + $now.format('yyyyLLdd') + '.csv' }}",
+        "driveId": {
+          "value": "<redacted>"
+        },
+        "folderId": {
+          "value": "<redacted>"
+        }
+      },
+      "name": "Upload CSV to storage",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        780,
+        -80
+      ],
+      "notes": "credentials intentionally omitted in this sanitized sample"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Record what we just exported so the next run skips it (idempotent / re-runnable).\nINSERT INTO published_product_pages (demander_id, product_id, variant_id, published_at)\nSELECT $1, product_id, variant_id, NOW()\nFROM generation.generated_variants\nWHERE demander_id = $1\nON CONFLICT DO NOTHING;",
+        "options": {
+          "queryReplacement": "={{ $('Set demander params').item.json.demander_id }}"
+        }
+      },
+      "name": "Log as published",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        560,
+        120
+      ],
+      "notes": "credentials intentionally omitted in this sanitized sample"
+    }
+  ],
+  "connections": {
+    "Schedule": {
+      "main": [
+        [
+          {
+            "node": "Set demander params",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set demander params": {
+      "main": [
+        [
+          {
+            "node": "Get rows ready to push",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log as published",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get rows ready to push": {
+      "main": [
+        [
+          {
+            "node": "Flatten generated fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten generated fields": {
+      "main": [
+        [
+          {
+            "node": "Convert to CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to CSV": {
+      "main": [
+        [
+          {
+            "node": "Upload CSV to storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
