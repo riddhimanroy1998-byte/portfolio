@@ -48,9 +48,13 @@ A few principles that show up in every project below.
 | 6 | Leave and payroll automation | People-ops admin reduced to one click | [live demo](https://riddhimanroy1998-byte.github.io/portfolio/hr-workflows.html) |
 | 7 | Transit-pass reimbursement | Per-profile statutory logic, half a day to zero | [live demo](https://riddhimanroy1998-byte.github.io/portfolio/hr-workflows.html) |
 | 8 | GMV-weighted GPSR prioritization | Using revenue weighting to make a regulation tractable | [live demo](https://riddhimanroy1998-byte.github.io/portfolio/coverage.html) |
+| 9 | Demander-marketplace product-page generation | A five-stage LLM pipeline that turns a catalogue product into a marketplace-ready listing, with per-demander output formats | [deep dive](pipeline-deep-dives.md#product-page-generation-for-demander-marketplaces) |
+| 10 | Catalogue creation and maintenance | A continuous, self-healing, idempotent system that builds a 1M+ product catalogue and backfills every missing attribute | [deep dive](pipeline-deep-dives.md#catalogue-creation) |
+| 11 | Automated product-match verification | Parallel, attribute-by-attribute LLM comparison that decides whether two catalogue items are the same product | [deep dive](pipeline-deep-dives.md#automated-product-match-verification) |
 
-Detailed write-ups with CV bullet points are in [`case-studies/portfolio-case-studies.md`](portfolio-case-studies.md).
+Detailed write-ups with CV bullet points are in [`portfolio-case-studies.md`](portfolio-case-studies.md).
 
+Deeper per-workflow pipeline walkthroughs, with a diagram for every stage, are in [`pipeline-deep-dives.md`](pipeline-deep-dives.md).
 ---
 
 ### Data & catalogue pipelines
