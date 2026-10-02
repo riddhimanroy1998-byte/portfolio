@@ -289,7 +289,7 @@ signals. None of them answer from memory.
   spelling. This is the same data-integrity instinct as case study 2, applied at write time
   instead of read time.
 - **An inbound triage agent**, routing new inbound through a scored confidence check before it
-  reaches a rep, with the rep making the final call. A separate write-up is in progress.
+  reaches a rep, with the rep making the final call. Covered in case study 4 below.
 
 ### What transfers
 
@@ -301,5 +301,119 @@ only kind a sales team will actually keep using after week two.
 The second pattern is that the hardest part of each agent was not the model. It was deciding
 which existing artefact counted as ground truth, and in two cases (verified domain, the rep's
 own sent mail) that decision is the entire design.
+
+---
+
+## 4. Scoring an Inbound Before a Human Spends Time on It
+
+### Context
+
+Inbound arrives and a CRM record is created automatically. The record carries whatever the
+person typed: a name, a job title, a company, and sometimes a company domain or a work email.
+
+That is a form submission, not a qualified lead. Everything on it is self-asserted. The company
+may not exist, the title may be inflated, the person may not work there, and the whole thing may
+be a competitor, a student, or a bot. None of that is visible from the record itself, and all of
+it is expensive to find out, because the only way to check is to go and look.
+
+So the real cost of inbound is not the bad ones. It is that a rep cannot tell which are bad
+without doing the work, and the work is identical whether the lead turns out to be real or not.
+
+### The problem, stated precisely
+
+Three different things get collapsed into "is this lead good":
+
+1. **Does the company exist?** Answerable from a domain and a commercial database.
+2. **Does this person work there?** Answerable from LinkedIn.
+3. **Does what they claimed match what is verifiable?** A different question again, and the one
+   that actually separates a real buyer from a plausible-looking form fill.
+
+A rep checking manually answers all three at once, in their head, and arrives at a yes or no
+with no record of why. The next rep facing the same account starts over.
+
+### What I built
+
+An agent that runs the three checks against named sources and returns a score with its working
+shown, then hands the decision to the assigned rep over chat. It does not decide. It removes the
+part of deciding that is lookup.
+
+**The checks:**
+
+- **Company existence.** Extract the company from the CRM record, resolve a domain, confirm a
+  live website, and look for the company in the commercial data providers already in the stack
+  (ZoomInfo, Lusha), plus a general web search for anything the databases miss.
+- **Person existence.** Find the person on LinkedIn at that company, via Claude driving a browser
+  rather than a scraping endpoint.
+- **Claim consistency.** Compare the stated job title against the one on the profile, and the
+  email domain against the company's own domain.
+
+### The scoring model
+
+Three evidence groups, weighted by how much each one tells you:
+
+| Group | Weight | What earns it |
+| --- | --- | --- |
+| Company is real | 40 | Domain resolves to a live site (20), company present in a commercial provider (15), corroborated by both providers (5) |
+| Person is real and is there | 35 | Profile found at the named company (25), profile substantive rather than a shell (10) |
+| Claims match evidence | 25 | Stated title matches the profile (15), email domain matches company domain (10) |
+
+**The design decision that matters: absence and contradiction are not the same thing.**
+
+A missing signal is weak evidence. No LinkedIn profile might mean a private profile, a
+non-English name spelled differently, or someone who genuinely does not use it. That should cost
+points and nothing more.
+
+A *contradicted* signal is strong evidence, and it points the other way. If the profile says the
+person works somewhere else, or the email domain belongs to a different company entirely, that is
+not a gap in the evidence. It is evidence. So a contradiction **caps** the total regardless of
+what else scored well, rather than being averaged away by a strong company check. A real company
+plus a person who does not work there is a worse lead than an unknown company, and a model that
+simply adds up points will rank it higher. That is the specific failure this guards against.
+
+**Bands:**
+
+- **80 and above.** Everything checks out. Routed to the assigned rep as verified.
+- **50 to 79.** Something is missing, not contradicted. Routed with the specific gap named, so
+  the rep spends their time on the one open question instead of re-checking everything.
+- **Below 50, or any contradiction.** Routed with the conflict stated explicitly.
+
+**Nothing is auto-rejected.** Every inbound reaches its assigned rep through a chat notification
+carrying the score, the band, and every source consulted. The score orders attention; it does not
+gate access. A probabilistic check should never silently discard a lead, because the cost of
+being wrong is asymmetric: a wasted twenty minutes against a lost deal.
+
+**Every score ships with its sources.** A bare 72 is useless, because the rep cannot tell whether
+it means a solid company with an unverifiable person, or a shaky company with a confirmed one.
+Those two call for opposite next actions. Showing the working is what makes the number
+actionable rather than decorative.
+
+```mermaid
+flowchart TD
+    A[Inbound form submitted] --> B[CRM record created automatically]
+    B --> C[Extract company, person, title, domain, email]
+    C --> D[Company check: domain, live site, ZoomInfo, Lusha, web search]
+    C --> E[Person check: LinkedIn via browser]
+    C --> F[Consistency: title vs profile, email domain vs company domain]
+    D --> G[Weighted score, 0 to 100]
+    E --> G
+    F --> H{Any signal contradicted?}
+    H -->|Yes| I[Cap the score, state the conflict]
+    H -->|No, only missing| G
+    I --> J[Notify assigned rep in chat]
+    G --> J
+    J --> K[Score + band + every source consulted]
+    K --> L[Rep makes the final call]
+```
+
+### What transfers
+
+The reusable idea is separating *missing* from *contradicted*. Most scoring systems treat both as
+"low confidence" and average them into the total, which quietly ranks an actively suspicious
+record above a merely unknown one. Splitting them changes what the number means and what a human
+should do about it.
+
+The second is that the agent's job ends one step before the decision. It does the lookup, shows
+the sources, and stops. That boundary is what makes it something a team will keep using, because
+nobody has to trust it to benefit from it.
 
 ---

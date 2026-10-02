@@ -51,6 +51,7 @@ method: the root cause, the decision rules, and the tradeoffs.
 | G1 | Auditing an account qualification process | Finding the bug in a process everyone was using correctly |
 | G2 | Two-source enrichment waterfall | Record linkage under conflicting data, and refusing to guess |
 | G3 | Eight agents against one stack | Grounding over generation, so output stays checkable |
+| G4 | Scoring an inbound before a human spends time on it | Separating missing evidence from contradicted evidence |
 
 Full write-ups in [`gtm-engineering-case-studies.md`](gtm-engineering-case-studies.md).
 
