@@ -40,25 +40,12 @@ A few principles that show up in every project below.
 
 ## Projects
 
-### GTM engineering
-
-Built at a cybersecurity SaaS vendor (digital risk protection / external attack surface
-management), selling into security leadership at enterprise accounts. These write-ups are about
-method: the root cause, the decision rules, and the tradeoffs.
-
-| # | Project | What it proves |
-| --- | --- | --- |
-| G1 | Auditing an account qualification process | Finding the bug in a process everyone was using correctly |
-| G2 | Two-source enrichment waterfall | Record linkage under conflicting data, and refusing to guess |
-| G3 | Eight agents against one stack | Grounding over generation, so output stays checkable |
-| G4 | Scoring an inbound before a human spends time on it | Separating missing evidence from contradicted evidence |
-
-Full write-ups in [`gtm-engineering-case-studies.md`](gtm-engineering-case-studies.md).
-
-### Automation & data
-
 | # | Project | What it proves | Links |
 | --- | --- | --- | --- |
+| G1 | Auditing an account qualification process | Finding the bug in a process everyone was using correctly | [write-up](#g1-auditing-an-account-qualification-process-instead-of-running-it) |
+| G2 | Two-source enrichment waterfall | Record linkage under conflicting data, and refusing to guess | [write-up](#g2-a-two-source-enrichment-waterfall-that-refuses-to-guess) |
+| G3 | Eight agents against one stack | Grounding over generation, so output stays checkable | [write-up](#g3-eight-agents-against-one-stack) |
+| G4 | Scoring an inbound before a human spends time on it | Separating missing evidence from contradicted evidence | [write-up](#g4-scoring-an-inbound-before-a-human-spends-time-on-it) |
 | 1 | Catalogue taxonomy standardization | Designing the data foundation a million products depend on | [code](catalogue-creation-automatic-addition_sanitized.json) |
 | 2 | Self-serve export tool | Removing a recurring cross-team bottleneck at the input layer | [code](demander-export-self-serve_sanitized.json) |
 | 3 | Multilingual product-page generation | LLM pipelines at catalogue scale, iterated for cost | [code](demand-generation-demander-csv_sanitized.json) |
@@ -77,6 +64,8 @@ Deeper per-workflow pipeline walkthroughs, with a diagram for every stage, are i
 ---
 
 ### GTM engineering & revenue systems
+
+Built at a cybersecurity SaaS vendor (digital risk protection / external attack surface management), selling into security leadership at enterprise accounts. These describe method: the root cause, the decision rules, and the tradeoffs. Longer versions, with the reasoning spelled out, are in [`gtm-engineering-case-studies.md`](gtm-engineering-case-studies.md).
 
 #### G1. Auditing an account qualification process instead of running it
 
@@ -192,6 +181,34 @@ flowchart TD
     E --> H
     F --> H
     G --> H
+```
+
+#### G4. Scoring an inbound before a human spends time on it
+
+Inbound arrives and a CRM record is created automatically, carrying whatever the person typed: a name, a title, a company, sometimes a domain or a work email. That is a form submission, not a qualified lead. Everything on it is self-asserted, and the only way to check is to go and look. So the real cost of inbound is not the bad ones, it is that a rep cannot tell which are bad without doing the work, and the work is identical either way.
+
+The agent runs three checks against named sources and returns a score out of 100 with its working shown. Company existence is worth 40, because it is the cheapest to verify, the hardest to fake, and it is the floor: if the company is not real, nothing else matters. Whether the person actually works there is worth 35, the most informative check but the least reliably available, since plenty of real buyers have thin or private profiles. Whether their claims match the evidence is worth 25.
+
+The design decision that matters is that **absence and contradiction are not the same thing**. No profile found is weak evidence, and costs points. A profile saying the person works somewhere else is strong evidence pointing the other way, so a contradiction **caps** the total regardless of what else scored well. A real company with a person who does not work there is a worse lead than an unknown company, and a model that simply adds points ranks it higher. Nothing is auto-rejected: every inbound reaches its assigned rep over chat with the score, the band and every source consulted, because the score orders attention rather than gating access.
+
+Stack: HubSpot, Claude API, Claude driving a browser for profile lookups, ZoomInfo, Lusha, web search, Slack.
+
+```mermaid
+flowchart TD
+    A[Inbound form submitted] --> B[CRM record created automatically]
+    B --> C[Extract company, person, title, domain, email]
+    C --> D[Company check: domain, live site, data providers, web search]
+    C --> E[Person check: profile lookup via browser]
+    C --> F[Consistency: title vs profile, email domain vs company domain]
+    D --> G[Weighted score, 0 to 100]
+    E --> G
+    F --> H{Any signal contradicted?}
+    H -->|Yes| I[Cap the score, state the conflict]
+    H -->|No, only missing| G
+    I --> J[Notify assigned rep in chat]
+    G --> J
+    J --> K[Score + band + every source consulted]
+    K --> L[Rep makes the final call]
 ```
 
 ---
