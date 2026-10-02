@@ -1,6 +1,6 @@
-# Riddhiman Roy — Automation & AI Systems
+# Riddhiman Roy — GTM Engineering, Automation & AI Systems
 
-I find the costliest manual work buried inside messy operational systems and turn it into automation that runs itself. n8n, LLM pipelines, SQL, prompt to production. Everything here was built and shipped at a European B2B e-commerce marketplace operating across 100+ retail platforms.
+I find the costliest manual work buried inside messy operational systems and turn it into automation that runs itself. Two domains. **GTM engineering** for B2B SaaS revenue teams: AI agents against the CRM stack, enrichment pipelines, and the data-integrity rules that decide whether any of it can be trusted. And **automation and data infrastructure** at a European B2B e-commerce marketplace operating across 100+ retail platforms. n8n, LLM pipelines, SQL, prompt to production.
 
 ![n8n](https://img.shields.io/badge/n8n-workflow_orchestration-EA4B71)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-schema_&_SQL-336791)
@@ -8,8 +8,10 @@ I find the costliest manual work buried inside messy operational systems and tur
 ![OpenAI](https://img.shields.io/badge/OpenAI_API-LLM_pipelines-412991)
 ![Claude](https://img.shields.io/badge/Claude-MCP_&_agents-D97757)
 ![Metabase](https://img.shields.io/badge/Metabase-dashboards-509EE3)
+![HubSpot](https://img.shields.io/badge/HubSpot-sequences_&_sync-FF7A59)
+![Salesforce](https://img.shields.io/badge/Salesforce-SOQL_&_data_model-00A1E0)
 
-> Confidentiality: my employer and its partners are anonymized, architecture is described at the pattern level, and no internal systems are named. All quantitative figures are real. The workflow files are sanitized illustrations, not drop-in imports.
+> Confidentiality: my employers and their partners are anonymized, architecture is described at the pattern level, and no internal systems, CRM schema or colleague names are given. In the e-commerce and HR sections every quantitative figure is real. The GTM engineering sections describe method and architecture rather than outcomes, because those numbers belong on a CV and not in a public repo. The workflow files are sanitized illustrations, not drop-in imports.
 
 ---
 
@@ -38,6 +40,22 @@ A few principles that show up in every project below.
 
 ## Projects
 
+### GTM engineering
+
+Built at a cybersecurity SaaS vendor (digital risk protection / external attack surface
+management), selling into security leadership at enterprise accounts. These write-ups are about
+method: the root cause, the decision rules, and the tradeoffs.
+
+| # | Project | What it proves |
+| --- | --- | --- |
+| G1 | Auditing an account qualification process | Finding the bug in a process everyone was using correctly |
+| G2 | Two-source enrichment waterfall | Record linkage under conflicting data, and refusing to guess |
+| G3 | Eight agents against one stack | Grounding over generation, so output stays checkable |
+
+Full write-ups in [`gtm-engineering-case-studies.md`](gtm-engineering-case-studies.md).
+
+### Automation & data
+
 | # | Project | What it proves | Links |
 | --- | --- | --- | --- |
 | 1 | Catalogue taxonomy standardization | Designing the data foundation a million products depend on | [code](catalogue-creation-automatic-addition_sanitized.json) |
@@ -55,6 +73,126 @@ A few principles that show up in every project below.
 Detailed write-ups with CV bullet points are in [`portfolio-case-studies.md`](portfolio-case-studies.md).
 
 Deeper per-workflow pipeline walkthroughs, with a diagram for every stage, are in [`pipeline-deep-dives.md`](pipeline-deep-dives.md).
+---
+
+### GTM engineering & revenue systems
+
+#### G1. Auditing an account qualification process instead of running it
+
+A sales team ran a top-tier prospect classification with a hard cap on active accounts per rep,
+which is what makes the classification work and also what makes a wrong pick expensive. I was
+handed the qualification method and a patch to apply it to. I checked whether it worked first.
+
+Two failures, both discarding good accounts while letting already-worked ones through. The
+exclusion rule disqualified any account with a prior CRM touch, which silently eliminated the
+sectors with the longest sales history and skewed the output by vertical. And the CRM check
+could not see what it was being used to detect: activity logged against a contact is stored in
+`WhoId`, an account-scoped query reads `WhatId`, so contact-level outreach never appears in an
+account-level check. The query returned a clean zero on accounts that had been emailed months
+earlier. Nobody was screening carelessly; they were screening correctly against a field that
+structurally could not answer the question.
+
+I reframed the exclusion rule around an asymmetric cost: with very few slots per rep, a false
+positive burns a quarter and a false negative quietly loses a good account. Three narrow
+hard-excludes, everything else stays in play carrying a flag. Verification reads subject lines
+rather than dates, because the distinction that decides the outcome is a real two-way exchange
+versus a one-way automated sequence, and recency cannot tell those apart. A dormant touchpoint
+became a revival angle instead of a rejection.
+
+Stack: Salesforce (SOQL, object model), HubSpot, a four-tier persona architecture, a
+reason-coded rejected log.
+
+```mermaid
+flowchart TD
+    A[Candidate account] --> B[Check rejected log]
+    B -->|Previously dropped| Z[Stop, do not re-research]
+    B -->|Not seen| C[Account-level CRM check]
+    C --> D[Contact-level activity pull via WhoId]
+    D --> E[Read subject lines, not just dates]
+    E --> F{Two-way exchange?}
+    F -->|Yes, open stage, recent| G[Hard exclude: actively worked]
+    F -->|One-way sequence only| H[Revival candidate]
+    H --> I{DNC or existing customer?}
+    I -->|Yes| G
+    I -->|No| J[Apply qualifying lenses]
+    J --> K[Map contacts to persona tiers]
+    K --> L[Fixed-format brief]
+    G --> M[Log with reason code]
+```
+
+#### G2. A two-source enrichment waterfall that refuses to guess
+
+No contact-data provider is complete, so a second one gets consulted whenever the first comes up
+short. The symptom looks like a coverage problem. It is a trust problem: two providers return the
+same person with a different phone number, title or employer, one record is stale, and nothing in
+either tells you which. Absent a rule the practical default takes whichever field is populated,
+which prefers available data over correct data. The failure is not an empty list, it is a
+confident one.
+
+I set one provider as the source of record and the second as fallback only, because a blend has
+no tiebreaker and a waterfall does. Before any fallback-sourced phone number is trusted, the
+company and title on that record have to match the primary. A phone number cannot be validated
+on its own terms, only through the identity attached to it, so the cheap fields become the
+guardrail on the expensive one. Conflicting data is never silently merged; it is flagged and left
+to a human. Contacts are capped per account rather than pulled exhaustively, because a capped
+list forces a decision about who matters instead of deferring it to the rep at dial time.
+
+Stack: two commercial data providers in a primary/fallback waterfall, cross-field validation,
+tiered buyer profiling by buying role, cross-vendor industry taxonomy mapping.
+
+```mermaid
+flowchart TD
+    A[Target account] --> B[Primary provider query]
+    B --> C{Fields complete?}
+    C -->|Yes| H[Accept record]
+    C -->|No| D[Fallback provider query]
+    D --> E{Primary left field blank?}
+    E -->|Yes| F[Low risk: accept fallback value]
+    E -->|No, values conflict| G[Cross-check company + title]
+    G -->|Match| F
+    G -->|Mismatch| X[Flag for human review, do not merge]
+    F --> H
+    H --> I[Assign buyer tier]
+    I --> J[Apply per-account contact cap]
+    J --> K[Call-ready list: tier, timezone, hook]
+```
+
+#### G3. Eight agents against one stack
+
+An SDR's week is mostly not selling. It is research, CRM hygiene, write-ups, and moving
+information between systems that do not talk to each other. The usual response is a longer
+checklist; I built tooling against the stack instead.
+
+The design rule is grounding over generation. Each agent reads from a source the team already
+trusts rather than from the model's own knowledge, because an account briefing invented by a
+model is worse than no briefing, as someone will act on it. The battlecard builder is grounded in
+internal positioning content and CRM win/loss history. The outreach generator learns a rep's
+voice from their own sent mail, since a rep will not send something that does not sound like
+them, which makes voice-matching a precondition for adoption rather than a finishing touch. The
+CRM sync dedupes by verified domain rather than company name, because company name is free text
+and will cheerfully create a second record for the same company under a different spelling.
+
+The hardest part of each agent was not the model. It was deciding which existing artefact counted
+as ground truth.
+
+Stack: Claude API and Claude Skills, HubSpot, Salesforce, Gmail, Slack, Google Drive, LinkedIn
+Sales Navigator.
+
+```mermaid
+flowchart TD
+    A[Trusted source of record] --> B{Which artefact is ground truth?}
+    B -->|Internal content + win/loss| C[Battlecard builder]
+    B -->|Rep's own sent mail| D[Outreach generator]
+    B -->|CRM + engagement + web signals| E[Account summary]
+    B -->|Raw call notes| F[AE qualification brief]
+    B -->|Verified domain| G[CRM dedupe sync]
+    C --> H[Checkable output]
+    D --> H
+    E --> H
+    F --> H
+    G --> H
+```
+
 ---
 
 ### Data & catalogue pipelines
